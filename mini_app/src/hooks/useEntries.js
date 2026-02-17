@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchMonthEntries, fetchStats } from '../lib/api'
+import { fetchMonthEntries, fetchStats, fetchPatterns } from '../lib/api'
 
 /** Hook for calendar month data */
 export function useMonthEntries(month) {
@@ -38,4 +38,20 @@ export function useStats() {
   }, [])
 
   return { stats, loading, error }
+}
+
+/** Hook for patterns: recurring themes + AI connections */
+export function usePatterns() {
+  const [patterns, setPatterns] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    fetchPatterns()
+      .then(setPatterns)
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  return { patterns, loading, error }
 }

@@ -147,6 +147,85 @@ async def get_entry(entry_id: str, x_init_data: str | None = Header(None)):
     return result.data
 
 
+@app.get("/api/patterns")
+async def get_patterns(x_init_data: str | None = Header(None)):
+    """
+    Returns recurring themes and AI-detected connections between entries.
+    """
+    user = await _get_user_from_header(x_init_data)
+    db = database.get_db()
+
+    # All analyzed entries with themes and tags
+    result = (
+        db.table("entries")
+        .select("id, type, created_at, ai_analysis(key_themes, tags, summary, emotional_tone)")
+        .eq("user_id", user["id"])
+        .eq("is_analyzed", True)
+        .order("created_at", desc=True)
+        .limit(200)
+        .execute()
+    )
+    entries = result.data or []
+
+    # Build entry lookup for connections
+    entry_map = {e["id"]: e for e in entries}
+
+    # Count recurring themes
+    theme_map: dict[str, list] = {}
+    for entry in entries:
+        analysis = entry.get("ai_analysis") or {}
+        for theme in analysis.get("key_themes", []):
+            theme_map.setdefault(theme, []).append({
+                "id": entry["id"],
+                "type": entry["type"],
+                "date": entry["created_at"][:10],
+                "summary": (analysis.get("summary") or "")[:120],
+            })
+
+    recurring_themes = sorted(
+        [
+            {"theme": theme, "count": len(lst), "entries": lst[:5]}
+            for theme, lst in theme_map.items()
+            if len(lst) >= 2
+        ],
+        key=lambda x: x["count"],
+        reverse=True,
+    )[:12]
+
+    # AI connections
+    raw_connections = await database.get_user_connections(user["id"])
+    connections = []
+    for conn in raw_connections:
+        id_a = conn["entry_id_a"]
+        id_b = conn["entry_id_b"]
+        entry_a = entry_map.get(id_a)
+        entry_b = entry_map.get(id_b)
+        if not entry_a or not entry_b:
+            continue
+        connections.append({
+            "connection_type": conn["connection_type"],
+            "description": conn["description"],
+            "similarity_score": conn["similarity_score"],
+            "entry_a": {
+                "id": id_a,
+                "type": entry_a["type"],
+                "date": entry_a["created_at"][:10],
+                "summary": ((entry_a.get("ai_analysis") or {}).get("summary") or "")[:120],
+            },
+            "entry_b": {
+                "id": id_b,
+                "type": entry_b["type"],
+                "date": entry_b["created_at"][:10],
+                "summary": ((entry_b.get("ai_analysis") or {}).get("summary") or "")[:120],
+            },
+        })
+
+    return {
+        "recurring_themes": recurring_themes,
+        "connections": connections,
+    }
+
+
 @app.get("/api/stats")
 async def get_stats(x_init_data: str | None = Header(None)):
     """Returns aggregated stats: top tags, mood distribution, entries per month."""

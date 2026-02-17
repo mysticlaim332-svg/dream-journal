@@ -38,3 +38,8 @@ export async function fetchEntry(id) {
 export async function fetchStats() {
   return request('/stats')
 }
+
+/** Fetch patterns: recurring themes + AI connections */
+export async function fetchPatterns() {
+  return request('/patterns')
+}

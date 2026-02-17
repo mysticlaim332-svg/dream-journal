@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { initTelegram, getTelegramUser } from './lib/telegram'
 import CalendarPage from './pages/CalendarPage'
 import InsightsPage from './pages/InsightsPage'
+import PatternsPage from './pages/PatternsPage'
 
 const TABS = [
   { id: 'calendar', emoji: '📅', label: 'Календар' },
+  { id: 'patterns', emoji: '🔮', label: 'Патерни' },
   { id: 'insights', emoji: '✨', label: 'Інсайти' },
 ]
 
@@ -34,6 +36,7 @@ export default function App() {
       {/* Page content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'calendar' && <div className="h-full overflow-y-auto"><CalendarPage /></div>}
+        {activeTab === 'patterns' && <div className="h-full overflow-y-auto"><PatternsPage /></div>}
         {activeTab === 'insights' && <div className="h-full overflow-y-auto"><InsightsPage /></div>}
       </div>
 

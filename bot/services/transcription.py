@@ -40,10 +40,18 @@ async def transcribe(bot, file_id: str, language: str = "uk") -> str:
         # Groq Whisper supports Ukrainian (uk) and English (en)
         lang = language if language in ("uk", "en") else "uk"
 
+        # Force .ogg extension — Groq requires a supported format name
+        # Telegram sends .oga files which Groq rejects, but .ogg works fine
+        filename = os.path.basename(local_path)
+        if filename.endswith(".oga"):
+            filename = filename.replace(".oga", ".ogg")
+        elif not any(filename.endswith(ext) for ext in (".ogg", ".mp3", ".wav", ".m4a", ".webm")):
+            filename = filename + ".ogg"
+
         with open(local_path, "rb") as audio_file:
             transcription = _client.audio.transcriptions.create(
                 model="whisper-large-v3",
-                file=audio_file,
+                file=(filename, audio_file, "audio/ogg"),
                 language=lang,
                 response_format="text",
             )

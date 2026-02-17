@@ -1,14 +1,14 @@
 """
-AI analysis via Claude API.
+AI analysis via Groq LLaMA (fallback when Claude credits are unavailable).
 Analyzes dream/idea text and returns structured insights.
 """
 import json
 import re
-from anthropic import AsyncAnthropic
+from groq import AsyncGroq
 from config import config
 import database
 
-_client = AsyncAnthropic(api_key=config.anthropic_api_key)
+_client = AsyncGroq(api_key=config.groq_api_key)
 
 SYSTEM_PROMPT = """Ти — асистент для аналізу снів та ідей.
 Ти отримуєш запис сну, ідеї або думки і маєш проаналізувати його.
@@ -64,12 +64,32 @@ def _build_context(recent: list[dict]) -> str:
 
 
 def _parse_response(text: str) -> dict:
-    """Extract JSON from Claude response robustly."""
+    """Extract JSON from LLM response robustly."""
     text = text.strip()
-    # strip markdown code fences if present
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
-    return json.loads(text)
+
+    # Try 1: find { ... } block directly
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    # Try 2: model returned content without outer braces — wrap it
+    try:
+        return json.loads("{" + text + "}")
+    except json.JSONDecodeError:
+        pass
+
+    # Try 3: strip markdown fences and retry
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1:
+        return json.loads(cleaned[start:end + 1])
+
+    raise ValueError(f"Cannot parse JSON from response: {text[:200]}")
 
 
 async def analyze_entry(
@@ -89,20 +109,26 @@ async def analyze_entry(
     recent = [r for r in recent if r["id"] != entry_id]
 
     context_section = _build_context(recent)
-    prompt = ANALYSIS_TEMPLATE.format(
-        entry_type=entry_type,
-        text=raw_text,
-        context_section=context_section,
+    prompt = (
+        ANALYSIS_TEMPLATE
+        .replace("{entry_type}", entry_type)
+        .replace("{text}", raw_text)
+        .replace("{context_section}", context_section)
     )
 
-    message = await _client.messages.create(
-        model="claude-haiku-4-5-20251001",
+    response = await _client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
         max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
     )
 
-    raw_response_text = message.content[0].text
+    raw_response_text = response.choices[0].message.content
+    import logging as _log
+    _log.getLogger(__name__).debug("LLaMA raw: %s", raw_response_text[:300])
     parsed = _parse_response(raw_response_text)
 
     # Validate and sanitise fields

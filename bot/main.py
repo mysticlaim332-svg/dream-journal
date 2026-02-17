@@ -40,7 +40,7 @@ async def run_bot() -> None:
     await setup_scheduler(bot)
     logger.info("Bot polling started")
     try:
-        await dp.start_polling(bot, bot=bot)
+        await dp.start_polling(bot)
     finally:
         await bot.session.close()
 
@@ -54,7 +54,11 @@ async def run_api() -> None:
     )
     server = uvicorn.Server(server_config)
     logger.info(f"API server starting on port {API_PORT}")
-    await server.serve()
+    try:
+        await server.serve()
+    except OSError as e:
+        logger.warning(f"API server could not start (port {API_PORT} busy?): {e}")
+        logger.warning("Bot will run without Mini App API — this is fine for local testing")
 
 
 async def main() -> None:

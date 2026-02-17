@@ -1,7 +1,6 @@
 from supabase import create_client, Client
 from config import config
 from typing import Optional
-import uuid
 
 _client: Optional[Client] = None
 
@@ -9,32 +8,39 @@ _client: Optional[Client] = None
 def get_db() -> Client:
     global _client
     if _client is None:
-        _client = create_client(config.supabase_url, config.supabase_key)
+        _client = create_client(config.supabase_url.strip(), config.supabase_key.strip())
     return _client
+
+
+def _first(result) -> dict | None:
+    """Safely get first row from a supabase result."""
+    if result and result.data:
+        return result.data[0] if isinstance(result.data, list) else result.data
+    return None
 
 
 # ── Users ────────────────────────────────────────────────────────────────────
 
 async def get_or_create_user(telegram_id: int, username: str | None, first_name: str | None) -> dict:
     db = get_db()
-    result = db.table("users").select("*").eq("telegram_id", telegram_id).maybe_single().execute()
-
-    if result.data:
-        return result.data
+    result = db.table("users").select("*").eq("telegram_id", telegram_id).limit(1).execute()
+    existing = _first(result)
+    if existing:
+        return existing
 
     new_user = {
         "telegram_id": telegram_id,
         "username": username,
         "first_name": first_name,
     }
-    result = db.table("users").insert(new_user).select().single().execute()
-    return result.data
+    result = db.table("users").insert(new_user).execute()
+    return _first(result)
 
 
 async def get_user(telegram_id: int) -> dict | None:
     db = get_db()
-    result = db.table("users").select("*").eq("telegram_id", telegram_id).maybe_single().execute()
-    return result.data
+    result = db.table("users").select("*").eq("telegram_id", telegram_id).limit(1).execute()
+    return _first(result)
 
 
 async def update_user(telegram_id: int, data: dict) -> dict:
@@ -43,11 +49,9 @@ async def update_user(telegram_id: int, data: dict) -> dict:
         db.table("users")
         .update(data)
         .eq("telegram_id", telegram_id)
-        .select()
-        .single()
         .execute()
     )
-    return result.data
+    return _first(result)
 
 
 # ── Entries ──────────────────────────────────────────────────────────────────
@@ -66,8 +70,8 @@ async def create_entry(
         "voice_file_id": voice_file_id,
         "is_analyzed": False,
     }
-    result = db.table("entries").insert(data).select().single().execute()
-    return result.data
+    result = db.table("entries").insert(data).execute()
+    return _first(result)
 
 
 async def mark_entry_analyzed(entry_id: str) -> None:
@@ -122,8 +126,8 @@ async def save_analysis(
         "key_themes": key_themes,
         "raw_response": raw_response,
     }
-    result = db.table("ai_analysis").insert(data).select().single().execute()
-    return result.data
+    result = db.table("ai_analysis").insert(data).execute()
+    return _first(result)
 
 
 # ── Connections ───────────────────────────────────────────────────────────────
@@ -136,7 +140,6 @@ async def save_connection(
     similarity_score: float,
 ) -> None:
     db = get_db()
-    # entry_id_a is always the newer entry
     db.table("entry_connections").upsert({
         "entry_id_a": entry_id_a,
         "entry_id_b": entry_id_b,
@@ -144,6 +147,29 @@ async def save_connection(
         "description": description,
         "similarity_score": similarity_score,
     }, on_conflict="entry_id_a,entry_id_b").execute()
+
+
+async def get_user_connections(user_id: str, limit: int = 50) -> list[dict]:
+    """Return AI-detected connections between user's entries."""
+    db = get_db()
+    entry_result = (
+        db.table("entries")
+        .select("id")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    entry_ids = [e["id"] for e in (entry_result.data or [])]
+    if not entry_ids:
+        return []
+    result = (
+        db.table("entry_connections")
+        .select("entry_id_a, entry_id_b, connection_type, description, similarity_score")
+        .in_("entry_id_a", entry_ids)
+        .order("similarity_score", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data or []
 
 
 async def get_users_with_notifications() -> list[dict]:
