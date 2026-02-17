@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    env_file:
+      - ./bot/.env
+    ports:
+      - "8000:8000"    # FastAPI для Mini App
+    restart: unless-stopped
+    volumes:
+      - ./bot:/app     # hot-reload під час розробки
