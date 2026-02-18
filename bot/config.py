@@ -22,6 +22,7 @@ def load_config() -> Config:
         "SET" if os.getenv("SUPABASE_SERVICE_ROLE_KEY") else "MISSING",
         "SET" if os.getenv("GROQ_API_KEY") else "MISSING",
     )
+    _log.warning("ALL ENV KEYS: %s", sorted(k for k in os.environ.keys() if not k.startswith("RAILWAY_") and k != "PATH"))
     required = {
         "BOT_TOKEN": os.getenv("BOT_TOKEN"),
         "SUPABASE_URL": os.getenv("SUPABASE_URL"),
