@@ -14,6 +14,14 @@ class Config:
 
 
 def load_config() -> Config:
+    import logging
+    _log = logging.getLogger(__name__)
+    _log.warning("ENV CHECK: BOT_TOKEN=%s SUPABASE_URL=%s SUPABASE_SERVICE_ROLE_KEY=%s GROQ_API_KEY=%s",
+        "SET" if os.getenv("BOT_TOKEN") else "MISSING",
+        "SET" if os.getenv("SUPABASE_URL") else "MISSING",
+        "SET" if os.getenv("SUPABASE_SERVICE_ROLE_KEY") else "MISSING",
+        "SET" if os.getenv("GROQ_API_KEY") else "MISSING",
+    )
     required = {
         "BOT_TOKEN": os.getenv("BOT_TOKEN"),
         "SUPABASE_URL": os.getenv("SUPABASE_URL"),
