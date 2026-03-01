@@ -20,8 +20,16 @@ import database
 from config import config
 
 
-async def _run(fn):
-    return await asyncio.to_thread(fn)
+async def _run(fn, retries: int = 3):
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            return await asyncio.to_thread(fn)
+        except Exception as e:
+            last_exc = e
+            if attempt < retries - 1:
+                await asyncio.sleep(0.4 * (attempt + 1))
+    raise last_exc
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Dream Journal API", docs_url=None, redoc_url=None)

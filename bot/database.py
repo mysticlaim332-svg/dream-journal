@@ -13,12 +13,19 @@ def get_db() -> Client:
     return _client
 
 
-async def _run(fn):
-    """Run a synchronous supabase .execute() in a thread pool.
-    Avoids blocking uvloop's event loop and bypasses libuv DNS resolver
-    which conflicts with the sync httpx client used by supabase-py.
+async def _run(fn, retries: int = 3):
+    """Run a synchronous supabase .execute() in a thread pool with retry.
+    Retries handle intermittent DNS failures on Railway (ConnectError -2).
     """
-    return await asyncio.to_thread(fn)
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            return await asyncio.to_thread(fn)
+        except Exception as e:
+            last_exc = e
+            if attempt < retries - 1:
+                await asyncio.sleep(0.4 * (attempt + 1))
+    raise last_exc
 
 
 def _first(result) -> dict | None:
