@@ -91,7 +91,7 @@ async def _get_user_from_header(
     # Try token auth first (works when initData is empty on some Telegram clients)
     if x_user_token:
         telegram_id = _validate_user_token(x_user_token)
-        return await database.get_or_create_user(telegram_id=telegram_id)
+        return await database.get_or_create_user(telegram_id=telegram_id, username=None, first_name=None)
 
     if not x_init_data:
         raise HTTPException(status_code=401, detail="Missing X-Init-Data header")

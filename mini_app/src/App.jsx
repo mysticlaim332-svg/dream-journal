@@ -21,11 +21,12 @@ export default function App() {
   // DEBUG — remove after fix
   const webApp = window.Telegram?.WebApp
   const unsafeUser = webApp?.initDataUnsafe?.user
+  const urlParams = window.location.search
   const debugInfo = [
     `v${webApp?.version ?? '?'} | ${webApp?.platform ?? '?'}`,
     `initData: ${initData ? initData.slice(0,30)+'...' : 'EMPTY'}`,
     `user: ${unsafeUser ? unsafeUser.id : 'EMPTY'}`,
-    `unsafe: ${JSON.stringify(webApp?.initDataUnsafe ?? {}).slice(0,60)}`,
+    `url: ${urlParams || 'no params'}`,
   ].join(' | ')
 
   return (
