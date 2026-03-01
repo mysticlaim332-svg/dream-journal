@@ -5,6 +5,7 @@ Validates Telegram initData, then serves entries from Supabase.
 Run alongside the bot:
     uvicorn api:app --host 0.0.0.0 --port 8000
 """
+import asyncio
 import hashlib
 import hmac
 import json
@@ -17,6 +18,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import database
 from config import config
+
+
+async def _run(fn):
+    return await asyncio.to_thread(fn)
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Dream Journal API", docs_url=None, redoc_url=None)
@@ -117,7 +122,7 @@ async def get_entries(
             end = f"{dt.year}-{dt.month + 1:02d}-01T00:00:00"
         query = query.gte("created_at", start).lt("created_at", end)
 
-    result = query.execute()
+    result = await _run(lambda: query.execute())
     entries = result.data or []
 
     # Group by date for calendar
@@ -134,8 +139,8 @@ async def get_entry(entry_id: str, x_init_data: str | None = Header(None)):
     user = await _get_user_from_header(x_init_data)
     db = database.get_db()
 
-    result = (
-        db.table("entries")
+    result = await _run(
+        lambda: db.table("entries")
         .select("*, ai_analysis(*), entry_connections!entry_id_a(*, entries!entry_id_b(id, type, raw_text, created_at, ai_analysis(summary)))")
         .eq("id", entry_id)
         .eq("user_id", user["id"])
@@ -156,8 +161,8 @@ async def get_patterns(x_init_data: str | None = Header(None)):
     db = database.get_db()
 
     # All analyzed entries with themes and tags
-    result = (
-        db.table("entries")
+    result = await _run(
+        lambda: db.table("entries")
         .select("id, type, created_at, ai_analysis(key_themes, tags, summary, emotional_tone)")
         .eq("user_id", user["id"])
         .eq("is_analyzed", True)
@@ -233,8 +238,8 @@ async def get_stats(x_init_data: str | None = Header(None)):
     db = database.get_db()
 
     # Get all analyses for this user
-    result = (
-        db.table("entries")
+    result = await _run(
+        lambda: db.table("entries")
         .select("type, created_at, ai_analysis(tags, emotional_tone, key_themes)")
         .eq("user_id", user["id"])
         .eq("is_analyzed", True)
