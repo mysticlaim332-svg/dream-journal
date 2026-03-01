@@ -65,12 +65,15 @@ async def setup_scheduler(bot) -> AsyncIOScheduler:
     global _scheduler
     _scheduler = AsyncIOScheduler()
 
-    users = await database.get_users_with_notifications()
-    for user in users:
-        _schedule_user(_scheduler, bot, user)
+    try:
+        users = await database.get_users_with_notifications()
+        for user in users:
+            _schedule_user(_scheduler, bot, user)
+        logger.info(f"Scheduler started with {len(users)} user(s) scheduled")
+    except Exception as e:
+        logger.warning(f"Scheduler: could not load users from DB at startup: {e}. Starting empty.")
 
     _scheduler.start()
-    logger.info(f"Scheduler started with {len(users)} user(s) scheduled")
     return _scheduler
 
 
