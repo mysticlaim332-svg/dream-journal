@@ -1,11 +1,7 @@
 """
 FastAPI backend for the Telegram Mini App.
 Validates Telegram initData, then serves entries from Supabase.
-
-Run alongside the bot:
-    uvicorn api:app --host 0.0.0.0 --port 8000
 """
-import asyncio
 import hashlib
 import hmac
 import json
@@ -19,24 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 import database
 from config import config
 
-
-async def _run(fn, retries: int = 3):
-    last_exc: Exception | None = None
-    for attempt in range(retries):
-        try:
-            return await asyncio.to_thread(fn)
-        except Exception as e:
-            last_exc = e
-            if attempt < retries - 1:
-                await asyncio.sleep(0.4 * (attempt + 1))
-    raise last_exc
-
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Dream Journal API", docs_url=None, redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # Telegram Mini Apps run from tg:// or https://
+    allow_origins=["*"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -54,13 +38,10 @@ def _validate_init_data(init_data: str) -> dict:
     if not hash_value:
         raise HTTPException(status_code=401, detail="Missing hash")
 
-    # Build data-check-string: sorted key=value pairs joined by \n
     data_check_string = "\n".join(
         f"{k}={v[0]}" for k, v in sorted(parsed.items())
     )
 
-    # HMAC-SHA256(secret_key, data_check_string)
-    # secret_key = HMAC-SHA256("WebAppData", bot_token)
     secret_key = hmac.new(
         b"WebAppData",
         config.bot_token.encode(),
@@ -102,12 +83,8 @@ async def get_entries(
     month: str = Query(None, description="YYYY-MM format, e.g. 2024-01"),
     x_init_data: str | None = Header(None),
 ):
-    """
-    Returns entries for the given month (or all if omitted).
-    Groups by date for the calendar view.
-    """
     user = await _get_user_from_header(x_init_data)
-    db = database.get_db()
+    db = await database.get_db()
 
     query = (
         db.table("entries")
@@ -121,19 +98,16 @@ async def get_entries(
             dt = datetime.strptime(month, "%Y-%m")
         except ValueError:
             raise HTTPException(status_code=400, detail="Month must be YYYY-MM")
-        # filter by month using gte/lte
         start = dt.strftime("%Y-%m-01T00:00:00")
-        # last day of month
         if dt.month == 12:
             end = f"{dt.year + 1}-01-01T00:00:00"
         else:
             end = f"{dt.year}-{dt.month + 1:02d}-01T00:00:00"
         query = query.gte("created_at", start).lt("created_at", end)
 
-    result = await _run(lambda: query.execute())
+    result = await query.execute()
     entries = result.data or []
 
-    # Group by date for calendar
     by_date: dict[str, list] = {}
     for entry in entries:
         date = entry["created_at"][:10]
@@ -145,10 +119,10 @@ async def get_entries(
 @app.get("/api/entries/{entry_id}")
 async def get_entry(entry_id: str, x_init_data: str | None = Header(None)):
     user = await _get_user_from_header(x_init_data)
-    db = database.get_db()
+    db = await database.get_db()
 
-    result = await _run(
-        lambda: db.table("entries")
+    result = await (
+        db.table("entries")
         .select("*, ai_analysis(*), entry_connections!entry_id_a(*, entries!entry_id_b(id, type, raw_text, created_at, ai_analysis(summary)))")
         .eq("id", entry_id)
         .eq("user_id", user["id"])
@@ -162,15 +136,11 @@ async def get_entry(entry_id: str, x_init_data: str | None = Header(None)):
 
 @app.get("/api/patterns")
 async def get_patterns(x_init_data: str | None = Header(None)):
-    """
-    Returns recurring themes and AI-detected connections between entries.
-    """
     user = await _get_user_from_header(x_init_data)
-    db = database.get_db()
+    db = await database.get_db()
 
-    # All analyzed entries with themes and tags
-    result = await _run(
-        lambda: db.table("entries")
+    result = await (
+        db.table("entries")
         .select("id, type, created_at, ai_analysis(key_themes, tags, summary, emotional_tone)")
         .eq("user_id", user["id"])
         .eq("is_analyzed", True)
@@ -180,10 +150,8 @@ async def get_patterns(x_init_data: str | None = Header(None)):
     )
     entries = result.data or []
 
-    # Build entry lookup for connections
     entry_map = {e["id"]: e for e in entries}
 
-    # Count recurring themes
     theme_map: dict[str, list] = {}
     for entry in entries:
         analysis = entry.get("ai_analysis") or {}
@@ -205,7 +173,6 @@ async def get_patterns(x_init_data: str | None = Header(None)):
         reverse=True,
     )[:12]
 
-    # AI connections
     raw_connections = await database.get_user_connections(user["id"])
     connections = []
     for conn in raw_connections:
@@ -241,13 +208,11 @@ async def get_patterns(x_init_data: str | None = Header(None)):
 
 @app.get("/api/stats")
 async def get_stats(x_init_data: str | None = Header(None)):
-    """Returns aggregated stats: top tags, mood distribution, entries per month."""
     user = await _get_user_from_header(x_init_data)
-    db = database.get_db()
+    db = await database.get_db()
 
-    # Get all analyses for this user
-    result = await _run(
-        lambda: db.table("entries")
+    result = await (
+        db.table("entries")
         .select("type, created_at, ai_analysis(tags, emotional_tone, key_themes)")
         .eq("user_id", user["id"])
         .eq("is_analyzed", True)
@@ -257,26 +222,21 @@ async def get_stats(x_init_data: str | None = Header(None)):
     )
     entries = result.data or []
 
-    # Aggregate
     tag_counts: dict[str, int] = {}
     mood_counts: dict[str, int] = {}
     type_counts: dict[str, int] = {}
     monthly: dict[str, int] = {}
 
     for entry in entries:
-        # type
         type_counts[entry["type"]] = type_counts.get(entry["type"], 0) + 1
-        # month
         month = entry["created_at"][:7]
         monthly[month] = monthly.get(month, 0) + 1
 
         analysis = entry.get("ai_analysis") or {}
         if not analysis:
             continue
-        # tags
         for tag in analysis.get("tags", []):
             tag_counts[tag] = tag_counts.get(tag, 0) + 1
-        # mood
         tone = analysis.get("emotional_tone", "neutral")
         mood_counts[tone] = mood_counts.get(tone, 0) + 1
 

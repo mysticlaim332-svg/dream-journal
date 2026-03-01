@@ -1,31 +1,15 @@
-import asyncio
-from supabase import create_client, Client
+from supabase import acreate_client, AsyncClient
 from config import config
 from typing import Optional
 
-_client: Optional[Client] = None
+_client: Optional[AsyncClient] = None
 
 
-def get_db() -> Client:
+async def get_db() -> AsyncClient:
     global _client
     if _client is None:
-        _client = create_client(config.supabase_url.strip(), config.supabase_key.strip())
+        _client = await acreate_client(config.supabase_url.strip(), config.supabase_key.strip())
     return _client
-
-
-async def _run(fn, retries: int = 3):
-    """Run a synchronous supabase .execute() in a thread pool with retry.
-    Retries handle intermittent DNS failures on Railway (ConnectError -2).
-    """
-    last_exc: Exception | None = None
-    for attempt in range(retries):
-        try:
-            return await asyncio.to_thread(fn)
-        except Exception as e:
-            last_exc = e
-            if attempt < retries - 1:
-                await asyncio.sleep(0.4 * (attempt + 1))
-    raise last_exc
 
 
 def _first(result) -> dict | None:
@@ -38,8 +22,8 @@ def _first(result) -> dict | None:
 # ── Users ────────────────────────────────────────────────────────────────────
 
 async def get_or_create_user(telegram_id: int, username: str | None, first_name: str | None) -> dict:
-    db = get_db()
-    result = await _run(lambda: db.table("users").select("*").eq("telegram_id", telegram_id).limit(1).execute())
+    db = await get_db()
+    result = await db.table("users").select("*").eq("telegram_id", telegram_id).limit(1).execute()
     existing = _first(result)
     if existing:
         return existing
@@ -49,19 +33,19 @@ async def get_or_create_user(telegram_id: int, username: str | None, first_name:
         "username": username,
         "first_name": first_name,
     }
-    result = await _run(lambda: db.table("users").insert(new_user).execute())
+    result = await db.table("users").insert(new_user).execute()
     return _first(result)
 
 
 async def get_user(telegram_id: int) -> dict | None:
-    db = get_db()
-    result = await _run(lambda: db.table("users").select("*").eq("telegram_id", telegram_id).limit(1).execute())
+    db = await get_db()
+    result = await db.table("users").select("*").eq("telegram_id", telegram_id).limit(1).execute()
     return _first(result)
 
 
 async def update_user(telegram_id: int, data: dict) -> dict:
-    db = get_db()
-    result = await _run(lambda: db.table("users").update(data).eq("telegram_id", telegram_id).execute())
+    db = await get_db()
+    result = await db.table("users").update(data).eq("telegram_id", telegram_id).execute()
     return _first(result)
 
 
@@ -73,7 +57,7 @@ async def create_entry(
     entry_type: str = "dream",
     voice_file_id: str | None = None,
 ) -> dict:
-    db = get_db()
+    db = await get_db()
     data = {
         "user_id": user_id,
         "type": entry_type,
@@ -81,19 +65,19 @@ async def create_entry(
         "voice_file_id": voice_file_id,
         "is_analyzed": False,
     }
-    result = await _run(lambda: db.table("entries").insert(data).execute())
+    result = await db.table("entries").insert(data).execute()
     return _first(result)
 
 
 async def mark_entry_analyzed(entry_id: str) -> None:
-    db = get_db()
-    await _run(lambda: db.table("entries").update({"is_analyzed": True}).eq("id", entry_id).execute())
+    db = await get_db()
+    await db.table("entries").update({"is_analyzed": True}).eq("id", entry_id).execute()
 
 
 async def get_user_entries(user_id: str, limit: int = 50) -> list[dict]:
-    db = get_db()
-    result = await _run(
-        lambda: db.table("entries")
+    db = await get_db()
+    result = await (
+        db.table("entries")
         .select("*, ai_analysis(*)")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
@@ -105,9 +89,9 @@ async def get_user_entries(user_id: str, limit: int = 50) -> list[dict]:
 
 async def get_recent_analyses(user_id: str, limit: int = 10) -> list[dict]:
     """Return recent AI analyses for the user — used to detect recurring themes."""
-    db = get_db()
-    result = await _run(
-        lambda: db.table("entries")
+    db = await get_db()
+    result = await (
+        db.table("entries")
         .select("id, type, created_at, ai_analysis(summary, tags, key_themes, emotional_tone)")
         .eq("user_id", user_id)
         .eq("is_analyzed", True)
@@ -128,7 +112,7 @@ async def save_analysis(
     key_themes: list[str],
     raw_response: dict | None = None,
 ) -> dict:
-    db = get_db()
+    db = await get_db()
     data = {
         "entry_id": entry_id,
         "summary": summary,
@@ -137,7 +121,7 @@ async def save_analysis(
         "key_themes": key_themes,
         "raw_response": raw_response,
     }
-    result = await _run(lambda: db.table("ai_analysis").insert(data).execute())
+    result = await db.table("ai_analysis").insert(data).execute()
     return _first(result)
 
 
@@ -150,27 +134,25 @@ async def save_connection(
     description: str,
     similarity_score: float,
 ) -> None:
-    db = get_db()
-    await _run(lambda: db.table("entry_connections").upsert({
+    db = await get_db()
+    await db.table("entry_connections").upsert({
         "entry_id_a": entry_id_a,
         "entry_id_b": entry_id_b,
         "connection_type": connection_type,
         "description": description,
         "similarity_score": similarity_score,
-    }, on_conflict="entry_id_a,entry_id_b").execute())
+    }, on_conflict="entry_id_a,entry_id_b").execute()
 
 
 async def get_user_connections(user_id: str, limit: int = 50) -> list[dict]:
     """Return AI-detected connections between user's entries."""
-    db = get_db()
-    entry_result = await _run(
-        lambda: db.table("entries").select("id").eq("user_id", user_id).execute()
-    )
+    db = await get_db()
+    entry_result = await db.table("entries").select("id").eq("user_id", user_id).execute()
     entry_ids = [e["id"] for e in (entry_result.data or [])]
     if not entry_ids:
         return []
-    result = await _run(
-        lambda: db.table("entry_connections")
+    result = await (
+        db.table("entry_connections")
         .select("entry_id_a, entry_id_b, connection_type, description, similarity_score")
         .in_("entry_id_a", entry_ids)
         .order("similarity_score", desc=True)
@@ -182,9 +164,9 @@ async def get_user_connections(user_id: str, limit: int = 50) -> list[dict]:
 
 async def get_users_with_notifications() -> list[dict]:
     """Return all users who have notifications enabled."""
-    db = get_db()
-    result = await _run(
-        lambda: db.table("users")
+    db = await get_db()
+    result = await (
+        db.table("users")
         .select("telegram_id, notification_time, timezone")
         .eq("notifications_enabled", True)
         .execute()
