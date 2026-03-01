@@ -51,6 +51,7 @@ async def run_api() -> None:
         host="0.0.0.0",
         port=API_PORT,
         log_level="warning",
+        loop="asyncio",
     )
     server = uvicorn.Server(server_config)
     logger.info(f"API server starting on port {API_PORT}")
