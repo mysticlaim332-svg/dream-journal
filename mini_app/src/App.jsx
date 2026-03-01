@@ -18,24 +18,9 @@ export default function App() {
   const user = getTelegramUser()
   const initData = getInitData()
 
-  // DEBUG — remove after fix
-  const webApp = window.Telegram?.WebApp
-  const unsafeUser = webApp?.initDataUnsafe?.user
-  const urlParams = window.location.search
-  const debugInfo = [
-    `v${webApp?.version ?? '?'} | ${webApp?.platform ?? '?'}`,
-    `initData: ${initData ? initData.slice(0,30)+'...' : 'EMPTY'}`,
-    `user: ${unsafeUser ? unsafeUser.id : 'EMPTY'}`,
-    `url: ${urlParams || 'no params'}`,
-  ].join(' | ')
 
   return (
     <div className="flex flex-col h-full bg-dream-bg safe-top">
-      {/* DEBUG PANEL — remove after fix */}
-      <div style={{background:'#1a1a2e',color:'#aaa',fontSize:'10px',padding:'4px 8px',wordBreak:'break-all'}}>
-        {debugInfo}
-      </div>
-
       {/* User greeting */}
       {user && (
         <div className="px-4 pt-4 pb-2 flex items-center gap-2">
