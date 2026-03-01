@@ -5,24 +5,28 @@
 
 export const tg = window.Telegram?.WebApp ?? null
 
+function getWebApp() {
+  return window.Telegram?.WebApp ?? tg
+}
+
 /** Call once at app startup */
 export function initTelegram() {
-  if (!tg) return
-  tg.ready()
-  tg.expand()
-  // Match app colors to Telegram theme
-  tg.setHeaderColor('#0B0C1E')
-  tg.setBackgroundColor('#0B0C1E')
+  const webApp = getWebApp()
+  if (!webApp) return
+  webApp.ready()
+  webApp.expand()
+  webApp.setHeaderColor('#0B0C1E')
+  webApp.setBackgroundColor('#0B0C1E')
 }
 
 /** Telegram user from initData */
 export function getTelegramUser() {
-  return tg?.initDataUnsafe?.user ?? null
+  return getWebApp()?.initDataUnsafe?.user ?? null
 }
 
 /** Raw initData string — sent to our API for validation */
 export function getInitData() {
-  return tg?.initData ?? ''
+  return getWebApp()?.initData ?? ''
 }
 
 /** Show or hide Telegram's native Back button */

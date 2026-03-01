@@ -10,13 +10,12 @@ const TABS = [
   { id: 'insights', emoji: '✨', label: 'Інсайти' },
 ]
 
+// Init Telegram WebApp immediately (before any component mounts)
+initTelegram()
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('calendar')
   const user = getTelegramUser()
-
-  useEffect(() => {
-    initTelegram()
-  }, [])
 
   return (
     <div className="flex flex-col h-full bg-dream-bg safe-top">
