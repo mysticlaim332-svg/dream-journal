@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { initTelegram, getTelegramUser } from './lib/telegram'
+import { initTelegram, getTelegramUser, getInitData } from './lib/telegram'
 import CalendarPage from './pages/CalendarPage'
 import InsightsPage from './pages/InsightsPage'
 import PatternsPage from './pages/PatternsPage'
@@ -16,9 +16,18 @@ initTelegram()
 export default function App() {
   const [activeTab, setActiveTab] = useState('calendar')
   const user = getTelegramUser()
+  const initData = getInitData()
+
+  // DEBUG — remove after fix
+  const debugInfo = `WebApp: ${!!window.Telegram?.WebApp} | initData: ${initData ? initData.slice(0, 40) + '...' : 'EMPTY'}`
 
   return (
     <div className="flex flex-col h-full bg-dream-bg safe-top">
+      {/* DEBUG PANEL — remove after fix */}
+      <div style={{background:'#1a1a2e',color:'#aaa',fontSize:'10px',padding:'4px 8px',wordBreak:'break-all'}}>
+        {debugInfo}
+      </div>
+
       {/* User greeting */}
       {user && (
         <div className="px-4 pt-4 pb-2 flex items-center gap-2">
