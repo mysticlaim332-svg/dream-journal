@@ -2,19 +2,23 @@
  * API client — calls our FastAPI backend.
  * Attaches Telegram initData as X-Init-Data header for auth.
  */
-import { getInitData } from './telegram'
+import { getInitData, getUserToken } from './telegram'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 async function request(path, options = {}) {
   const initData = getInitData()
+  const userToken = getUserToken()
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  }
+  if (initData) headers['X-Init-Data'] = initData
+  if (userToken) headers['X-User-Token'] = userToken
+
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Init-Data': initData,
-      ...options.headers,
-    },
+    headers,
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))

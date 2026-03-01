@@ -29,6 +29,19 @@ export function getInitData() {
   return getWebApp()?.initData ?? ''
 }
 
+/**
+ * Fallback auth token from URL params (?tgid=...&sig=...).
+ * Used when Telegram doesn't inject initData (some iOS versions).
+ * Returns "tgid:sig" string or null.
+ */
+export function getUserToken() {
+  const params = new URLSearchParams(window.location.search)
+  const tgid = params.get('tgid')
+  const sig = params.get('sig')
+  if (tgid && sig) return `${tgid}:${sig}`
+  return null
+}
+
 /** Show or hide Telegram's native Back button */
 export function useBackButton(onBack) {
   if (!tg) return

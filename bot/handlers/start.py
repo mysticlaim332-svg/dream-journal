@@ -28,7 +28,7 @@ async def cmd_start(message: Message) -> None:
         "✍️ *Текст* — опиши сон або ідею словами\n\n"
         "Вранці я нагадаю тобі записати сон 🌅",
         parse_mode="Markdown",
-        reply_markup=keyboards.main_menu(),
+        reply_markup=keyboards.main_menu(message.from_user.id),
     )
 
 

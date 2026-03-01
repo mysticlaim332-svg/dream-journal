@@ -64,9 +64,38 @@ def _validate_init_data(init_data: str) -> dict:
     return json.loads(user_raw)
 
 
-async def _get_user_from_header(x_init_data: str | None) -> dict:
+def _validate_user_token(x_user_token: str) -> int:
+    """Validate tgid:sig token. Returns telegram_id or raises 401."""
+    try:
+        tgid_str, sig = x_user_token.split(":", 1)
+        telegram_id = int(tgid_str)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=401, detail="Invalid X-User-Token format")
+
+    expected = hmac.new(
+        config.bot_token.encode(),
+        tgid_str.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, sig):
+        raise HTTPException(status_code=401, detail="Invalid X-User-Token signature")
+
+    return telegram_id
+
+
+async def _get_user_from_header(
+    x_init_data: str | None,
+    x_user_token: str | None = None,
+) -> dict:
+    # Try token auth first (works when initData is empty on some Telegram clients)
+    if x_user_token:
+        telegram_id = _validate_user_token(x_user_token)
+        return await database.get_or_create_user(telegram_id=telegram_id)
+
     if not x_init_data:
         raise HTTPException(status_code=401, detail="Missing X-Init-Data header")
+
     tg_user = _validate_init_data(x_init_data)
     user = await database.get_or_create_user(
         telegram_id=tg_user["id"],
@@ -82,8 +111,9 @@ async def _get_user_from_header(x_init_data: str | None) -> dict:
 async def get_entries(
     month: str = Query(None, description="YYYY-MM format, e.g. 2024-01"),
     x_init_data: str | None = Header(None),
+    x_user_token: str | None = Header(None),
 ):
-    user = await _get_user_from_header(x_init_data)
+    user = await _get_user_from_header(x_init_data, x_user_token)
     db = await database.get_db()
 
     query = (
@@ -117,8 +147,8 @@ async def get_entries(
 
 
 @app.get("/api/entries/{entry_id}")
-async def get_entry(entry_id: str, x_init_data: str | None = Header(None)):
-    user = await _get_user_from_header(x_init_data)
+async def get_entry(entry_id: str, x_init_data: str | None = Header(None), x_user_token: str | None = Header(None)):
+    user = await _get_user_from_header(x_init_data, x_user_token)
     db = await database.get_db()
 
     result = await (
@@ -135,8 +165,8 @@ async def get_entry(entry_id: str, x_init_data: str | None = Header(None)):
 
 
 @app.get("/api/patterns")
-async def get_patterns(x_init_data: str | None = Header(None)):
-    user = await _get_user_from_header(x_init_data)
+async def get_patterns(x_init_data: str | None = Header(None), x_user_token: str | None = Header(None)):
+    user = await _get_user_from_header(x_init_data, x_user_token)
     db = await database.get_db()
 
     result = await (
@@ -207,8 +237,8 @@ async def get_patterns(x_init_data: str | None = Header(None)):
 
 
 @app.get("/api/stats")
-async def get_stats(x_init_data: str | None = Header(None)):
-    user = await _get_user_from_header(x_init_data)
+async def get_stats(x_init_data: str | None = Header(None), x_user_token: str | None = Header(None)):
+    user = await _get_user_from_header(x_init_data, x_user_token)
     db = await database.get_db()
 
     result = await (
