@@ -10,39 +10,47 @@ import database
 
 _client = AsyncGroq(api_key=config.groq_api_key)
 
-SYSTEM_PROMPT = """Ти — асистент для аналізу снів та ідей.
-Ти отримуєш запис сну, ідеї або думки і маєш проаналізувати його.
+SYSTEM_PROMPT = """Ти — досвідчений психоаналітик із глибоким знанням юнгіанської психології, символіки снів та патернів підсвідомого.
 
-Відповідай ЛИШЕ валідним JSON без жодного додаткового тексту.
-Якщо запис українською — аналізуй українською. Якщо англійською — англійською.
-"""
+Твоя задача — аналізувати сни, ідеї та думки людини, виявляючи глибинні психологічні патерни.
+
+Принципи роботи:
+- НЕ тлумач буквально (яблуко ≠ бажання їсти — шукай символіку)
+- Шукай що підсвідомість намагається опрацювати: страхи, бажання, незакриті ситуації
+- Звертай увагу на емоції в записі, а не лише на події
+- Якщо є попередні записи — шукай патерни що повторюються
+- Будь конкретним і чесним, уникай розмитих узагальнень
+
+Відповідай ЛИШЕ валідним JSON. Мова відповіді = мова запису."""
 
 ANALYSIS_TEMPLATE = """\
-Проаналізуй цей запис і поверни JSON з такою структурою:
-{
-  "summary": "1-3 речення що описують суть запису",
+Проаналізуй цей запис і поверни JSON:
+{{
+  "summary": "2-3 речення — що відбувається на поверхні, без інтерпретацій",
+  "deeper_meaning": "2-4 речення — що насправді може опрацьовувати підсвідомість: які емоції, страхи, бажання чи незакриті питання за цим стоять",
+  "insight": "1-2 речення — найважливіше психологічне спостереження, конкретне і чесне",
+  "reflection_question": "одне питання яке допоможе людині самій глибше зрозуміти цей запис",
   "tags": ["#тег1", "#тег2", "#тег3"],
   "emotional_tone": "one of: positive | neutral | anxious | exciting | sad | mixed",
-  "key_themes": ["тема1", "тема2"],
+  "key_themes": ["тема1", "тема2", "тема3"],
   "connections": [
-    {
-      "entry_id": "<uuid попереднього запису>",
+    {{
+      "entry_id": "<uuid>",
       "connection_type": "one of: recurring_theme | similar_emotion | related_idea | same_symbol",
-      "description": "коротке пояснення зв'язку",
+      "description": "конкретне пояснення зв'язку",
       "similarity_score": 0.85
-    }
+    }}
   ]
-}
+}}
 
 Тип запису: {entry_type}
-Текст запису:
+Текст:
 {text}
 
-{context_section}
-"""
+{context_section}"""
 
 CONTEXT_SECTION = """\
-Попередні записи (для пошуку зв'язків):
+Попередні записи цієї людини (шукай патерни що повторюються):
 {context}
 """
 
@@ -53,12 +61,12 @@ def _build_context(recent: list[dict]) -> str:
     lines = []
     for item in recent:
         analysis = item.get("ai_analysis") or {}
-        if not analysis:
-            continue
+        date = item.get("created_at", "")[:10]
+        text_preview = (item.get("raw_text") or "")[:120].replace("\n", " ")
+        themes = ", ".join(analysis.get("key_themes", []))
+        tone = analysis.get("emotional_tone", "")
         lines.append(
-            f"- ID: {item['id']} | {item['type']} | "
-            f"Теми: {', '.join(analysis.get('key_themes', []))} | "
-            f"Теги: {', '.join(analysis.get('tags', []))}"
+            f"[{date} | {item['type']} | настрій: {tone} | теми: {themes}]\n  \"{text_preview}\""
         )
     return CONTEXT_SECTION.format(context="\n".join(lines)) if lines else ""
 
@@ -118,7 +126,7 @@ async def analyze_entry(
 
     response = await _client.chat.completions.create(
         model="llama-3.3-70b-versatile",
-        max_tokens=1024,
+        max_tokens=2048,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -133,6 +141,9 @@ async def analyze_entry(
 
     # Validate and sanitise fields
     summary = parsed.get("summary", "")
+    deeper_meaning = parsed.get("deeper_meaning", "")
+    insight = parsed.get("insight", "")
+    reflection_question = parsed.get("reflection_question", "")
     tags = [str(t) for t in parsed.get("tags", [])][:8]
     emotional_tone = parsed.get("emotional_tone", "neutral")
     if emotional_tone not in ("positive", "neutral", "anxious", "exciting", "sad", "mixed"):
@@ -147,7 +158,12 @@ async def analyze_entry(
         tags=tags,
         emotional_tone=emotional_tone,
         key_themes=key_themes,
-        raw_response={"text": raw_response_text},
+        raw_response={
+            "text": raw_response_text,
+            "deeper_meaning": deeper_meaning,
+            "insight": insight,
+            "reflection_question": reflection_question,
+        },
     )
 
     # Save detected connections
@@ -168,6 +184,9 @@ async def analyze_entry(
 
     return {
         "summary": summary,
+        "deeper_meaning": deeper_meaning,
+        "insight": insight,
+        "reflection_question": reflection_question,
         "tags": tags,
         "emotional_tone": emotional_tone,
         "key_themes": key_themes,
@@ -203,21 +222,31 @@ def format_analysis_message(analysis: dict, entry_type: str, transcribed_text: s
     lines = [
         f"{emoji} *{label} збережено*",
         "",
-        f"📝 *Резюме:* {analysis['summary']}",
+        f"📝 *Що відбулось:* {analysis['summary']}",
+    ]
+
+    if analysis.get("deeper_meaning"):
+        lines += ["", f"🔍 *Глибше:* {analysis['deeper_meaning']}"]
+
+    if analysis.get("insight"):
+        lines += ["", f"💡 *Інсайт:* {analysis['insight']}"]
+
+    if analysis.get("reflection_question"):
+        lines += ["", f"🪞 *Питання для роздумів:*\n_{analysis['reflection_question']}_"]
+
+    lines += [
         "",
         f"🏷 *Теги:* {tags_str}",
         f"🔑 *Теми:* {themes_str}",
-        f"💭 *Настрій:* {tone}",
     ]
 
     if analysis.get("connections"):
         lines.append("")
-        lines.append("🔗 *Схожі записи знайдено!*")
+        lines.append("🔗 *Зв'язок з попередніми записами:*")
         for conn in analysis["connections"][:2]:
             lines.append(f"   └ {conn.get('description', '')}")
 
     if transcribed_text:
-        lines.append("")
-        lines.append(f"🎙 _Текст розпізнано з голосового_")
+        lines += ["", "🎙 _Текст розпізнано з голосового_"]
 
     return "\n".join(lines)
