@@ -19,7 +19,9 @@ export default function App() {
   const initData = getInitData()
 
   // DEBUG — remove after fix
-  const debugInfo = `WebApp: ${!!window.Telegram?.WebApp} | initData: ${initData ? initData.slice(0, 40) + '...' : 'EMPTY'}`
+  const webApp = window.Telegram?.WebApp
+  const unsafeUser = webApp?.initDataUnsafe?.user
+  const debugInfo = `WebApp: ${!!webApp} | initData: ${initData ? initData.slice(0,30)+'...' : 'EMPTY'} | user: ${unsafeUser ? unsafeUser.id : 'EMPTY'}`
 
   return (
     <div className="flex flex-col h-full bg-dream-bg safe-top">
